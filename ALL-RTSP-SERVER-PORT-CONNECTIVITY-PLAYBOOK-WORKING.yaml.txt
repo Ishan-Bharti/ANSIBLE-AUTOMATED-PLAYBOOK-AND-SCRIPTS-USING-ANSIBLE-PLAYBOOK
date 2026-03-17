@@ -1,0 +1,158 @@
+---
+- name: Per-node Full Port Connectivity Check
+  hosts: rtsp-node, appgw142, appgw143
+  gather_facts: no
+  become: no
+  serial: 1
+
+  vars:
+    report_dir: "/tmp/port_connectivity_reports"
+
+    # Map inventory host IP to server key
+    host_key_map:
+      "10.192.242.134": "adminportal134"
+      "10.192.242.135": "rtspcug135"
+      "10.192.242.136": "merchantportal136"
+      "10.192.242.137": "bigcug137"
+      "10.192.242.138": "rtsp138"
+      "10.192.242.139": "rtsp139"
+      "10.192.242.140": "big140"
+      "10.192.242.141": "big141"
+      "10.192.242.142": "app_gateway142"
+      "10.192.242.143": "app_gateway143"
+
+    # Full ports list per server
+    server_ports:
+      rtspcug135:
+        - { name: "DB_SERVER", host: "10.192.246.193", port: 1890 }
+        - { name: "JETTY_HTTP_PORT", host: "10.192.242.135", port: 10001 }
+        - { name: "JETTY_M_HTTP_PORT", host: "10.192.242.135", port: 30001 }
+        - { name: "JETTY_PSO_HTTP_PORT", host: "10.192.242.135", port: 10002 }
+        - { name: "JETTY_DTSP_HTTP_PORT", host: "10.192.242.135", port: 31003 }
+        - { name: "BIG_SERVER", host: "10.192.197.15", port: 9444 }
+        - { name: "PMGKY", host: "10.192.232.16", port: 9191 }
+        - { name: "PNB_KAFKA", host: "pnb-kafka-cbdcprod-kafka-listener-bootstrap-pnb-kafka-cbdcprod.apps.ocpcbdcsprod.pnb.net", port: 443 }
+        - { name: "ATTESTATION", host: "attestation.apps.ocpcbdcsprod.pnb.net", port: 443 }
+
+      rtsp138:
+        - { name: "DB_SERVER", host: "10.192.246.193", port: 1890 }
+        - { name: "JETTY_HTTP_PORT", host: "10.192.242.138", port: 10001 }
+        - { name: "JETTY_M_HTTP_PORT", host: "10.192.242.138", port: 30001 }
+        - { name: "JETTY_PSO_HTTP_PORT", host: "10.192.242.138", port: 10002 }
+        - { name: "JETTY_DTSP_HTTP_PORT", host: "10.192.242.138", port: 31003 }
+        - { name: "BIG_SERVER", host: "10.192.197.15", port: 9444 }
+        - { name: "PMGKY", host: "10.192.232.16", port: 9191 }
+        - { name: "PNB_KAFKA", host: "pnb-kafka-cbdcprod-kafka-listener-bootstrap-pnb-kafka-cbdcprod.apps.ocpcbdcsprod.pnb.net", port: 443 }
+        - { name: "ATTESTATION", host: "attestation.apps.ocpcbdcsprod.pnb.net", port: 443 }
+
+      rtsp139:
+        - { name: "DB_SERVER", host: "10.192.246.193", port: 1890 }
+        - { name: "JETTY_HTTP_PORT", host: "10.192.242.139", port: 10001 }
+        - { name: "JETTY_M_HTTP_PORT", host: "10.192.242.139", port: 30001 }
+        - { name: "JETTY_PSO_HTTP_PORT", host: "10.192.242.139", port: 10002 }
+        - { name: "JETTY_DTSP_HTTP_PORT", host: "10.192.242.139", port: 31003 }
+        - { name: "BIG_SERVER", host: "10.192.197.15", port: 9444 }
+        - { name: "PMGKY", host: "10.192.232.16", port: 9191 }
+        - { name: "PNB_KAFKA", host: "pnb-kafka-cbdcprod-kafka-listener-bootstrap-pnb-kafka-cbdcprod.apps.ocpcbdcsprod.pnb.net", port: 443 }
+        - { name: "ATTESTATION", host: "attestation.apps.ocpcbdcsprod.pnb.net", port: 443 }
+
+      big140:
+        - { name: "JETTY_HTTP_PORT", host: "127.0.0.1", port: 20001 }
+        - { name: "CBS_SERVER", host: "10.192.238.20", port: 50681 }
+        # Added ports from check-big140-port-connectivity.yaml
+        - { name: "LOAD_TOKEN_CALLBACK_1", host: "10.192.242.138", port: 10001 }
+        - { name: "LOAD_TOKEN_CALLBACK_2", host: "10.192.197.15", port: 9090 }
+        - { name: "AADHAAR_OTP", host: "10.192.242.39", port: 1708 }
+        - { name: "AADHAAR_DETAILS", host: "10.192.242.39", port: 1708 }
+        - { name: "SEND_SMS", host: "10.192.232.16", port: 9090 }
+        - { name: "OFFUS_CHECK_TXN_STATUS", host: "10.192.5.213", port: 8071 }
+        - { name: "UPI_CHECK_TXN_STATUS", host: "10.192.5.213", port: 8071 }
+        - { name: "UPI_REFUND_CALLBACK", host: "10.192.197.15", port: 9090 }
+        - { name: "DCMS_SERVER", host: "10.192.2.195", port: 8264 }
+
+      big141:
+        - { name: "JETTY_HTTP_PORT", host: "127.0.0.1", port: 20001 }
+        - { name: "CBS_SERVER", host: "10.192.238.20", port: 50681 }
+        # Added ports from check-big141-port-connectivity.yaml
+        - { name: "LOAD_TOKEN_CALLBACK_1", host: "10.192.242.138", port: 10001 }
+        - { name: "LOAD_TOKEN_CALLBACK_2", host: "10.192.197.15", port: 9090 }
+        - { name: "AADHAAR_OTP", host: "10.192.242.39", port: 1708 }
+        - { name: "AADHAAR_DETAILS", host: "10.192.242.39", port: 1708 }
+        - { name: "SEND_SMS", host: "10.192.232.16", port: 9090 }
+        - { name: "OFFUS_CHECK_TXN_STATUS", host: "10.192.5.213", port: 8071 }
+        - { name: "UPI_CHECK_TXN_STATUS", host: "10.192.5.213", port: 8071 }
+        - { name: "UPI_REFUND_CALLBACK", host: "10.192.197.15", port: 9090 }
+        - { name: "DCMS_SERVER", host: "10.192.2.195", port: 8264 }
+
+      bigcug137:
+        - { name: "JETTY_HTTP_PORT", host: "127.0.0.1", port: 20001 }
+        - { name: "CBS_SERVER", host: "10.192.238.20", port: 50681 }
+        # Added ports from check-bigcug137-port-connectivity.yaml
+        - { name: "LOAD_TOKEN_CALLBACK_1", host: "10.192.242.138", port: 10001 }
+        - { name: "LOAD_TOKEN_CALLBACK_2", host: "10.192.197.15", port: 9090 }
+        - { name: "LOAD_TOKEN_CALLBACK_3", host: "10.192.242.135", port: 10012 }
+        - { name: "SEND_SMS", host: "10.192.197.15", port: 9444 }
+        - { name: "OFFLINE_PAYMENT_CALLBACK", host: "10.192.242.135", port: 10001 }
+        - { name: "AADHAAR_OTP", host: "10.192.242.39", port: 1708 }
+        - { name: "AADHAAR_DETAILS", host: "10.192.242.39", port: 1708 }
+        - { name: "OFFUS_CHECK_TXN_STATUS", host: "10.192.5.213", port: 8071 }
+        - { name: "UPI_CHECK_TXN_STATUS", host: "10.192.5.213", port: 8071 }
+        - { name: "UPI_REFUND_CALLBACK", host: "10.192.197.15", port: 9090 }
+
+      adminportal134:
+        - { name: "ADMIN_PORTAL", host: "10.192.242.134", port: 8080 }
+        - { name: "DB_SERVER", host: "10.192.246.193", port: 1890 }
+
+      merchantportal136:
+        - { name: "MERCHANT_PORTAL", host: "10.192.242.136", port: 8080 }
+        - { name: "DB_SERVER", host: "10.192.246.193", port: 1890 }
+
+      app_gateway142:
+        - { name: "Localhost App Gateway", host: "127.0.0.1", port: 10080 }
+        - { name: "Redis Server", host: "10.192.246.201", port: 6379 }
+
+      app_gateway143:
+        - { name: "Localhost App Gateway", host: "127.0.0.1", port: 10080 }
+        - { name: "Redis Server", host: "10.192.246.201", port: 6379 }
+
+  pre_tasks:
+    - name: Create report directory on control node
+      run_once: true
+      delegate_to: localhost
+      file:
+        path: "{{ report_dir }}"
+        state: directory
+        mode: '0755'
+
+  tasks:
+    - name: Set connectivity list for this host
+      set_fact:
+        connectivity_targets: "{{ server_ports[host_key_map[inventory_hostname]] }}"
+      when: inventory_hostname in host_key_map
+
+    - name: Check connectivity for each port
+      shell: nc -z -w 5 {{ item.host }} {{ item.port }}
+      register: nc_result
+      loop: "{{ connectivity_targets }}"
+      ignore_errors: yes
+      when: connectivity_targets is defined
+
+    - name: Build host report string
+      set_fact:
+        host_report: |
+          ==========================================
+          Server: {{ inventory_hostname }}
+          Timestamp: {{ ansible_date_time.iso8601 if ansible_date_time is defined else lookup('pipe','date -Iseconds') }}
+          ==========================================
+          {% for r in nc_result.results %}
+          {{ r.item.name }} ({{ r.item.host }}:{{ r.item.port }}) : {{ 'CONNECTED' if r.rc == 0 else 'NOT REACHABLE' }}
+          {% endfor %}
+
+    - name: Write host report to a separate file on control node
+      delegate_to: localhost
+      copy:
+        content: "{{ host_report }}"
+        dest: "{{ report_dir }}/port_connectivity_{{ inventory_hostname }}.txt"
+        force: yes
+
+        :wq!
