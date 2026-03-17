@@ -1,0 +1,110 @@
+#!/bin/bash
+##############################################################################
+# Server Health Check Alert – All Servers (Color-Coded)
+##############################################################################
+
+TIMESTAMP=$(date '+%F_%H-%M-%S')
+EMAIL_PAYLOAD="/tmp/server_health_report_alert_$TIMESTAMP.eml"
+EMAIL_LOG="/tmp/server_health_report_debug_$TIMESTAMP.log"
+EMAIL_SUBJECT="PROD RTSP ALL Server Health Report - $TIMESTAMP"
+EMAIL_TO="ishan.bharti@sarvatra.in"
+EMAIL_FROM="cbdc@pnb.bank.in"
+SMTP_SERVER="10.192.24.144"
+CC_LIST="rahul.giri@sarvatra.in,akhilesh.dangwal@sarvatra.in,nilesh.tiwari@sarvatra.in,rahulsingh.pal@sarvatra.in,ashutosh.tiwari@sarvatra.in,ishant.fandi@sarvatra.in,himanshu.prajapati@pnb.bank.in,harish.kumar26@pnb.bank.in,bhupendra.kumar3@pnb.bank.in,gurpreet.singh3@pnb.bank.in,dnyaneshwar.modhave@sarvatra.in,satya.das@sarvatra.in"
+BOUNDARY="====PART_$(date +%s%N)===="
+
+HEALTH_REPORT_DIR="/tmp/server_health_reports"
+SERVER_FILES=$(ls $HEALTH_REPORT_DIR)
+
+# --- Build MIME Email ------------------------------------------------------
+{
+  printf "From: %s\r\n" "$EMAIL_FROM"
+  printf "To: %s\r\n" "$EMAIL_TO"
+  printf "Cc: %s\r\n" "$CC_LIST"
+  printf "Subject: %s\r\n" "$EMAIL_SUBJECT"
+  printf "MIME-Version: 1.0\r\n"
+  printf "Content-Type: multipart/alternative; boundary=\"%s\"\r\n" "$BOUNDARY"
+  printf "\r\n"
+
+  # Plain-text fallback
+  printf -- "--%s\r\n" "$BOUNDARY"
+  printf "Content-Type: text/plain; charset=UTF-8\r\n"
+  printf "\r\n"
+  printf "This is all Rtsp-Tomas-Prod Rtsp-Tomas-Cug Big-Prod Big-Cug AppGateway-Prod Admin-Portal Merchant-portal server health report generated at: %s.\r\n" "$TIMESTAMP"
+  printf "\r\n"
+
+  # HTML part
+  printf -- "--%s\r\n" "$BOUNDARY"
+  printf "Content-Type: text/html; charset=UTF-8\r\n"
+  printf "\r\n"
+  printf "<html><body>\r\n"
+  printf "<p>Hello Team,</p>\r\n"
+  printf "<p>This is a consolidated <b>Server Health Report</b> generated at <b>%s</b>. Servers included: RTSP-SWITCH PROD, RTSP-SWITCH CUG, TOMAS-MINT PROD, TOMAS-MINT CUG, ADMIN-PORTAL-SERVER, MERCHANT-PORTAL-SERVER, APPGATEWAY-SERVER, BIG-CBS-SERVER.</p>\r\n" "$TIMESTAMP"
+  printf "<table border=\"1\" cellpadding=\"5\" cellspacing=\"0\">\r\n"
+  printf "<tr><th>Server IP</th><th>Timestamp</th><th>App Status</th><th>Disk Usage</th><th>Memory Usage</th><th>CPU Usage</th><th>Load Average</th></tr>\r\n"
+
+  for FILE in $SERVER_FILES; do
+    SERVER_IP=$(echo $FILE | sed -e 's/server_//g' -e 's/.txt//g')
+    TIMESTAMP_FILE=$(grep "Timestamp" $HEALTH_REPORT_DIR/$FILE | cut -d' ' -f2-)
+
+    # App Status: color coding
+    APP_STATUS=$(grep "SERVICE" $HEALTH_REPORT_DIR/$FILE | awk -F' : ' '{
+      color="green"; if($2 != "SERVICE OK") color="red"; printf "<span style=\"color:%s\">%s : %s</span><br>", color, $1, $2
+    }' | tr -d '\n')
+
+    # Disk Usage: color coding
+    DISK_LINE=$(grep "Disk Usage" $HEALTH_REPORT_DIR/$FILE)
+    DISK_USAGE_VAL=$(echo "$DISK_LINE" | awk '{print $3}' | tr -d '%')
+    DISK_COLOR="green"
+    if [ "$DISK_USAGE_VAL" -ge 80 ]; then
+      DISK_COLOR="red"
+    fi
+    DISK_USAGE="<span style=\"color:$DISK_COLOR\">$DISK_LINE</span>"
+
+    # Memory Usage: color coding if > 80%
+    MEM_LINE=$(grep "Memory Used" $HEALTH_REPORT_DIR/$FILE)
+    MEM_USAGE_VAL=$(echo "$MEM_LINE" | awk -F'[()%]' '{print $2}')
+    MEM_COLOR="green"
+    if (( $(echo "$MEM_USAGE_VAL >= 80" | bc -l) )); then
+      MEM_COLOR="red"
+    fi
+    MEMORY_USAGE="<span style=\"color:$MEM_COLOR\">$MEM_LINE</span>"
+
+    # CPU Usage: color coding if > 80%
+    CPU_LINE=$(grep "CPU Used" $HEALTH_REPORT_DIR/$FILE)
+    CPU_USAGE_VAL=$(echo "$CPU_LINE" | awk '{print $3}' | tr -d '%')
+    CPU_COLOR="green"
+    if (( $(echo "$CPU_USAGE_VAL >= 80" | bc -l) )); then
+      CPU_COLOR="red"
+    fi
+    CPU_USAGE="<span style=\"color:$CPU_COLOR\">$CPU_LINE</span>"
+
+    LOAD_AVERAGE=$(grep "Load Average" $HEALTH_REPORT_DIR/$FILE | head -n1)
+
+    # Add table row
+    printf "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\r\n" \
+      "$SERVER_IP" "$TIMESTAMP_FILE" "$APP_STATUS" "$DISK_USAGE" "$MEMORY_USAGE" "$CPU_USAGE" "$LOAD_AVERAGE"
+
+  done
+
+  printf "</table>\r\n"
+  printf "<p>Regards,<br><b>ISHAN BHARTI</b></p>\r\n"
+  printf "</body></html>\r\n"
+  printf -- "\r\n--%s--\r\n" "$BOUNDARY"
+} > "$EMAIL_PAYLOAD"
+
+# --- Send Email ------------------------------------------------------------
+curl -v --url "smtp://${SMTP_SERVER}:25" \
+     --mail-from "$EMAIL_FROM" \
+     --mail-rcpt "$EMAIL_TO" \
+     $(IFS=','; for cc in $CC_LIST; do echo "--mail-rcpt $cc"; done) \
+     --upload-file "$EMAIL_PAYLOAD" 2>&1 | tee -a "$EMAIL_LOG"
+
+# --- Final Status ----------------------------------------------------------
+if [ ${PIPESTATUS[0]} -eq 0 ]; then
+  echo "✅ Server health report email sent successfully to $EMAIL_TO and CC: $CC_LIST"
+else
+  echo "❌ Email sending failed – check $EMAIL_LOG"
+fi
+
+:wq!
