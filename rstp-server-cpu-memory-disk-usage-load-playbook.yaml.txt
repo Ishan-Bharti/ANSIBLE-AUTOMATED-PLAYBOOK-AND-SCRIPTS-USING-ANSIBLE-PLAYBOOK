@@ -1,0 +1,126 @@
+---
+- name: Per-node Server & Application Health Check
+  hosts: rtsp-node
+  gather_facts: yes
+  become: yes
+  serial: 1
+
+  vars:
+    report_dir: "/tmp/server_health_reports"
+    disk_threshold: 80
+
+    server_apps:
+      "10.192.242.134":
+        - { name: "ADMIN-PORTAL", path: "/u02/apache-tomcat-9.0.111" }
+      "10.192.242.135":
+        - { name: "RTSP-SWITCH-CUG", path: "/u02/rtsp/cbdc-pnb-cug" }
+        - { name: "TOMAS-MINT-SERVICE", path: "/u02/Tomas" }
+      "10.192.242.136":
+        - { name: "MERCHANT-PORTAL", path: "/u02/apache-tomcat-9.0.111" }
+      "10.192.242.137":
+        - { name: "BIG-CBS-SERVICE", path: "/u02/Big" }
+      "10.192.242.138":
+        - { name: "RTSP-SWITCH", path: "/u02/rtsp/cbdc-pnb" }
+        - { name: "TOMAS-MINT-SERVICE", path: "/u02/Tomas" }
+      "10.192.242.139":
+        - { name: "RTSP-SWITCH", path: "/u02/rtsp/cbdc-pnb" }
+        - { name: "TOMAS-MINT-SERVICE", path: "/u02/Tomas" }
+      "10.192.242.140":
+        - { name: "BIG-CBS-SERVICE", path: "/u02/Big" }
+      "10.192.242.141":
+        - { name: "BIG-CBS-SERVICE", path: "/u02/Big" }
+      "10.192.242.142":
+        - { name: "APP-GATEWAY", path: "/u02/appgw/appgw-parent-4.3" }
+      "10.192.242.143":
+        - { name: "APP-GATEWAY", path: "/u02/appgw-parent-4.3/" }
+
+  pre_tasks:
+    - name: Create report directory on control node
+      run_once: true
+      delegate_to: localhost
+      file:
+        path: "{{ report_dir }}"
+        state: directory
+        mode: '0755'
+
+  tasks:
+    - name: Collect application process status
+      shell: |
+        if ps -ef | grep -v grep | grep "{{ item.path }}" > /dev/null; then
+          echo "{{ item.name }} : SERVICE OK"
+        else
+          echo "{{ item.name }} : NOT RUNNING"
+        fi
+      loop: "{{ server_apps[inventory_hostname] | default([]) }}"
+      register: app_status
+      changed_when: false
+
+    - name: Collect full process details
+      shell: |
+        ps -ef | grep "{{ item.path }}" | grep -v grep || echo "NO PROCESS FOUND for {{ item.path }}"
+      loop: "{{ server_apps[inventory_hostname] | default([]) }}"
+      register: process_details
+      changed_when: false
+
+    - name: Collect disk usage percentage
+      shell: df -h /u02 | awk 'NR==2 {print $5}' | tr -d '%'
+      register: disk
+      changed_when: false
+
+    - name: Collect /u02 size
+      shell: du -sh /u02
+      register: u02_size
+      changed_when: false
+
+    - name: Collect memory usage
+      shell: |
+        free -m | awk '/Mem:/ {printf "Memory Used: %dMB (%.2f%%), Free: %dMB\n", $3, ($3*100)/$2, $4}'
+      register: mem
+      changed_when: false
+
+    - name: Collect CPU usage
+      shell: |
+        top -bn1 | awk '/Cpu/ {used=100-$8; printf "CPU Used: %.1f%%, Free: %.1f%%\n", used, $8}'
+      register: cpu
+      changed_when: false
+
+    - name: Collect load average
+      shell: |
+        uptime | awk -F'load average:' '{print "Load Average:" $2}'
+      register: load
+      changed_when: false
+
+    - name: Build host report string
+      set_fact:
+        host_report: |
+          ==========================================
+          Server: {{ inventory_hostname }}
+          Timestamp: {{ ansible_date_time.iso8601 }}
+          ==========================================
+          {% for r in app_status.results %}
+          {{ r.stdout }}
+          {% endfor %}
+          ---- Process Details ----
+          {% for p in process_details.results %}
+          {{ p.stdout }}
+          {% endfor %}
+          -------------------------
+          {% if disk.stdout|int < disk_threshold %}
+          Disk Usage : {{ disk.stdout }}% (NORMAL)
+          {% else %}
+          Disk Usage : {{ disk.stdout }}% (CRITICAL)
+          {% endif %}
+          /u02 Size Usage : {{ u02_size.stdout }}
+          {{ mem.stdout }}
+          {{ cpu.stdout }}
+          {{ load.stdout }}
+
+    - name: Write host report to a separate file
+      delegate_to: localhost
+      copy:
+        content: "{{ host_report }}"
+        dest: "{{ report_dir }}/server_{{ inventory_hostname }}.txt"
+        force: yes
+
+        :wq!
+        
