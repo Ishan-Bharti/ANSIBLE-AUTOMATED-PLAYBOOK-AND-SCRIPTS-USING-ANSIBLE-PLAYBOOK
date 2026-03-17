@@ -1,0 +1,103 @@
+#!/bin/bash
+##############################################################################
+# Port Connectivity Report – All Servers (One Row per Server)
+##############################################################################
+
+TIMESTAMP=$(date '+%F_%H-%M-%S')
+EMAIL_PAYLOAD="/tmp/port_connectivity_report_alert_$TIMESTAMP.eml"
+EMAIL_LOG="/tmp/port_connectivity_report_debug_$TIMESTAMP.log"
+EMAIL_SUBJECT="PROD RTSP Port Connectivity Report - $TIMESTAMP"
+EMAIL_TO="ishan.bharti@sarvatra.in"
+EMAIL_FROM="cbdc@pnb.bank.in"
+SMTP_SERVER="10.192.24.144"
+CC_LIST="rahul.giri@sarvatra.in,akhilesh.dangwal@sarvatra.in,nilesh.tiwari@sarvatra.in,rahulsingh.pal@sarvatra.in,ashutosh.tiwari@sarvatra.in,ishant.fandi@sarvatra.in,himanshu.prajapati@pnb.bank.in,harish.kumar26@pnb.bank.in,bhupendra.kumar3@pnb.bank.in,gurpreet.singh3@pnb.bank.in,dnyaneshwar.modhave@sarvatra.in,satya.das@sarvatra.in"
+BOUNDARY="====PART_$(date +%s%N)===="
+
+REPORT_DIR="/tmp/port_connectivity_reports"
+REPORT_FILES=$(ls $REPORT_DIR)
+
+# --- Build MIME Email ------------------------------------------------------
+{
+  printf "From: %s\r\n" "$EMAIL_FROM"
+  printf "To: %s\r\n" "$EMAIL_TO"
+  printf "Cc: %s\r\n" "$CC_LIST"
+  printf "Subject: %s\r\n" "$EMAIL_SUBJECT"
+  printf "MIME-Version: 1.0\r\n"
+  printf "Content-Type: multipart/alternative; boundary=\"%s\"\r\n" "$BOUNDARY"
+  printf "\r\n"
+
+  # Plain-text fallback
+  printf -- "--%s\r\n" "$BOUNDARY"
+  printf "Content-Type: text/plain; charset=UTF-8\r\n"
+  printf "\r\n"
+  printf "This is the consolidated port connectivity report for all servers generated at: %s.\r\n" "$TIMESTAMP"
+  printf "\r\n"
+
+  # HTML part
+  printf -- "--%s\r\n" "$BOUNDARY"
+  printf "Content-Type: text/html; charset=UTF-8\r\n"
+  printf "\r\n"
+  printf "<html><body>\r\n"
+  printf "<p>Hello Team,</p>\r\n"
+  printf "<p>This is a PROD RTSP SERVER consolidated <b>Port Connectivity Report</b> generated at <b>%s</b>. Each server shows all ports and their connectivity status.</p>\r\n" "$TIMESTAMP"
+  printf "<table border=\"1\" cellpadding=\"5\" cellspacing=\"0\">\r\n"
+  printf "<tr><th>Server IP</th><th>Server Name</th><th>Timestamp</th><th>Ports & Status</th></tr>\r\n"
+
+  for FILE in $REPORT_FILES; do
+    SERVER_IP=$(echo $FILE | sed -e 's/port_connectivity_//g' -e 's/.txt//g')
+    TIMESTAMP_FILE=$(grep "Timestamp" $REPORT_DIR/$FILE | cut -d' ' -f2-)
+
+    # --- Extract last octet to map to server name ---
+    LAST_OCTET=$(echo "$SERVER_IP" | awk -F'.' '{print $4}')
+
+    case "$LAST_OCTET" in
+      134) SERVER_NAME="ADMIN-PORTAL-SERVER" ;;
+      135) SERVER_NAME="RTSP-CUG-SERVER" ;;
+      136) SERVER_NAME="MERCHANT-PORTAL-SERVER" ;;
+      137) SERVER_NAME="CUG-BIG-SERVER" ;;
+      138) SERVER_NAME="PROD-RTSP-SERVER" ;;
+      139) SERVER_NAME="PROD-RTSP-SERVER" ;;
+      140) SERVER_NAME="PROD-BIG-SERVER" ;;
+      141) SERVER_NAME="PROD-BIG-SERVER" ;;
+      142) SERVER_NAME="PROD-APPGW-SERVER" ;;
+      143) SERVER_NAME="PROD-APPGW-SERVER" ;;
+      *)   SERVER_NAME="UNKNOWN-SERVER" ;;
+    esac
+
+    # Combine all ports for this server into a single HTML string
+    PORTS_HTML=$(grep -E ":\s(CONNECTED|NOT REACHABLE)$" $REPORT_DIR/$FILE | while read -r LINE; do
+      PORT_NAME=$(echo "$LINE" | awk -F' \\(' '{print $1}')
+      HOST_PORT=$(echo "$LINE" | awk -F' : ' '{print $1}' | sed -e "s/$PORT_NAME //")
+      STATUS=$(echo "$LINE" | awk -F' : ' '{print $2}')
+      COLOR="green"
+      if [ "$STATUS" == "NOT REACHABLE" ]; then
+        COLOR="red"
+      fi
+      printf "<b>%s</b> (%s) : <span style=\"color:%s\">%s</span><br>" "$PORT_NAME" "$HOST_PORT" "$COLOR" "$STATUS"
+    done)
+
+    # Add single row for the server with Server Name
+    printf "<tr><td>%s</td><td>%s</td><td>%s</td><td>%s</td></tr>\r\n" "$SERVER_IP" "$SERVER_NAME" "$TIMESTAMP_FILE" "$PORTS_HTML"
+  done
+
+  printf "</table>\r\n"
+  printf "<p>Regards,<br><b>ISHAN BHARTI</b></p>\r\n"
+  printf "</body></html>\r\n"
+  printf -- "\r\n--%s--\r\n" "$BOUNDARY"
+} > "$EMAIL_PAYLOAD"
+
+# --- Send Email ------------------------------------------------------------
+curl -v --url "smtp://${SMTP_SERVER}:25" \
+     --mail-from "$EMAIL_FROM" \
+     --mail-rcpt "$EMAIL_TO" \
+     $(IFS=','; for cc in $CC_LIST; do echo "--mail-rcpt $cc"; done) \
+     --upload-file "$EMAIL_PAYLOAD" 2>&1 | tee -a "$EMAIL_LOG"
+
+# --- Final Status ----------------------------------------------------------
+if [ ${PIPESTATUS[0]} -eq 0 ]; then
+  echo "✅ Port connectivity report email sent successfully to $EMAIL_TO and CC: $CC_LIST"
+else
+  echo "❌ Email sending failed – check $EMAIL_LOG"
+fi
+
+:wq!
